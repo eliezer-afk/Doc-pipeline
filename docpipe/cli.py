@@ -17,6 +17,7 @@ from .generator import generate as run_generate
 from .parsers import DbtParser, AirflowParser, PythonParser
 from .parsers.python_parser import PrefectParser
 from . import writer
+from .scanner import scan
 
 app = typer.Typer(
     name="docpipe",
@@ -136,6 +137,95 @@ def config_set(
     section, field = parts
     save_config({section: {field: value}})
     console.print(f"[green]Actualizado:[/green] {key} = {value}")
+
+
+@app.command(name="scan")
+def scan_cmd(
+    root: Path = typer.Argument(..., help="Carpeta raíz del repositorio a escanear"),
+    folder: Optional[str] = typer.Option(None, "--folder", help="Subcarpeta dentro del vault (ej: Clientes/Acme)"),
+    owner: Optional[str] = typer.Option(None, "--owner", help="Owner de los pipelines"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Detecta pipelines sin generar documentación"),
+) -> None:
+    """Escanea un repositorio completo y documenta todos los pipelines encontrados."""
+    from rich.table import Table
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, MofNCompleteColumn
+
+    if not root.exists() or not root.is_dir():
+        console.print(f"[red]Error:[/red] '{root}' no es una carpeta válida")
+        raise typer.Exit(1)
+
+    config = load_config()
+
+    if not dry_run and not config.vault.path:
+        console.print("[red]Error:[/red] No hay vault configurado. Usá --vault o ejecutá: docpipe config init")
+        raise typer.Exit(1)
+
+    console.print(f"[dim]Escaneando[/dim] {root} ...")
+    result = scan(root)
+
+    if not result.pipelines:
+        console.print("[yellow]No se encontraron pipelines en el repositorio.[/yellow]")
+        raise typer.Exit(0)
+
+    console.print(f"[green]Encontrados:[/green] {len(result.pipelines)} pipelines  "
+                  f"[dim]({len(result.skipped)} archivos omitidos)[/dim]\n")
+
+    if dry_run:
+        table = Table(title="Pipelines detectados", show_lines=True)
+        table.add_column("Archivo", style="cyan")
+        table.add_column("Tipo", style="yellow")
+        for p in result.pipelines:
+            table.add_row(str(p.relative_to(root)), detect_type(p))
+        console.print(table)
+        return
+
+    ok, failed = [], []
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Documentando...", total=len(result.pipelines))
+
+        for source in result.pipelines:
+            rel = source.relative_to(root)
+            progress.update(task, description=f"[dim]{rel}[/dim]")
+            try:
+                detected_type = detect_type(source)
+                parser = _get_parser(detected_type)
+                pipeline_info = parser.parse(source)
+                doc = run_generate(pipeline_info, config)
+                content, target_path = writer.render(
+                    pipeline_info, doc, config, owner=owner, folder=folder
+                )
+                writer.write(content, target_path)
+                ok.append((rel, target_path))
+            except Exception as exc:
+                failed.append((rel, str(exc)))
+            finally:
+                progress.advance(task)
+
+    # Resumen final
+    console.print()
+    if ok:
+        table = Table(title=f"[green]{len(ok)} documentados[/green]", show_lines=False)
+        table.add_column("Pipeline", style="cyan")
+        table.add_column("Archivo generado", style="dim")
+        for rel, target in ok:
+            table.add_row(str(rel), str(target.name))
+        console.print(table)
+
+    if failed:
+        console.print()
+        err_table = Table(title=f"[red]{len(failed)} errores[/red]", show_lines=False)
+        err_table.add_column("Pipeline", style="cyan")
+        err_table.add_column("Error", style="red")
+        for rel, err in failed:
+            err_table.add_row(str(rel), err[:80])
+        console.print(err_table)
 
 
 @app.command()

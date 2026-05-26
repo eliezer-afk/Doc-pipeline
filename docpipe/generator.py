@@ -76,7 +76,8 @@ def generate(pipeline: PipelineInfo, config: Config) -> GeneratedDoc:
 
     gen_config = types.GenerateContentConfig(
         temperature=0.2,
-        max_output_tokens=2048,
+        max_output_tokens=8192,
+        response_mime_type="application/json",
     )
 
     prompt = _PROMPT.format(

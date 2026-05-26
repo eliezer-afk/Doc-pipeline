@@ -91,6 +91,24 @@ class AirflowParser(BaseParser):
 
     def _extract_tasks(self, tree: ast.Module) -> list[dict]:
         tasks = []
+
+        # Patrón 1: @task() decorator (Airflow 3 / TaskFlow API)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                for decorator in node.decorator_list:
+                    dec_name = self._get_call_name(decorator) if isinstance(decorator, ast.Call) else (
+                        decorator.id if isinstance(decorator, ast.Name) else ""
+                    )
+                    if dec_name in {"task", "task_group"}:
+                        tasks.append({
+                            "task_id": node.name,
+                            "operator": "@task",
+                            "upstream": [],
+                            "docstring": ast.get_docstring(node) or "",
+                        })
+                        break
+
+        # Patrón 2: Operadores clásicos (PythonOperator, BashOperator, etc.)
         airflow_operators = {
             "PythonOperator", "BashOperator", "DummyOperator", "EmptyOperator",
             "BigQueryOperator", "BigQueryInsertJobOperator", "HttpOperator",
@@ -104,15 +122,19 @@ class AirflowParser(BaseParser):
                     task_id = self._get_kwarg_str(node.value, "task_id") or (
                         node.targets[0].id if isinstance(node.targets[0], ast.Name) else "unknown"
                     )
-                    tasks.append({
-                        "task_id": task_id,
-                        "operator": operator,
-                        "upstream": [],
-                    })
+                    if not any(t["task_id"] == task_id for t in tasks):
+                        tasks.append({
+                            "task_id": task_id,
+                            "operator": operator,
+                            "upstream": [],
+                            "docstring": "",
+                        })
+
         # Detecta dependencias via >> operator
         for node in ast.walk(tree):
             if isinstance(node, ast.Expr) and isinstance(node.value, ast.BinOp):
                 self._extract_dependencies(node.value, tasks)
+
         return tasks
 
     def _extract_dependencies(self, node: ast.BinOp, tasks: list[dict]) -> None:

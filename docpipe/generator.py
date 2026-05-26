@@ -19,6 +19,17 @@ REGLAS ESTRICTAS:
 - El campo "mermaid_diagram" SIEMPRE debe tener un diagrama válido basado en el flujo real del pipeline.
 - Los campos "sources" y "destination" SIEMPRE deben tener al menos un elemento.
 
+REGLAS ESTRICTAS PARA EL DIAGRAMA MERMAID (compatibilidad con Obsidian):
+- Los nombres de subgraph con más de una palabra DEBEN ir entre comillas: subgraph "Mi Nombre"
+- NUNCA uses @ dentro de etiquetas de nodos (ej: P@5 → P5, @task → task)
+- NUNCA uses comillas simples dentro de etiquetas de nodos
+- NUNCA hagas que un nodo apunte a sí mismo (A --> A está prohibido)
+- NUNCA referencíes un nodo desde fuera del subgraph donde está definido; si un nodo conecta dos subgraphs, defínilo fuera de ambos
+- NUNCA uses dos puntos (:) en etiquetas de subgraph
+- NUNCA uses paréntesis dentro de etiquetas de nodos con forma diamante {{texto}}
+- NUNCA uses paréntesis dentro de etiquetas de nodos entre corchetes [texto (esto rompe)]  — usá guiones o espacios en su lugar
+- Usá solo graph TD o graph LR como tipo de diagrama
+
 TIPO DE PIPELINE: {type}
 
 CÓDIGO FUENTE:
@@ -37,7 +48,7 @@ FORMATO DE RESPUESTA (JSON puro, sin markdown):
   "destination": [
     {{"name": "nombre exacto del destino", "type": "BigQuery|Postgres|GCS|archivo|otro", "description": "qué datos escribe y en qué formato"}}
   ],
-  "mermaid_diagram": "graph LR\\n  A[NombreFuente] --> B[Transformación]\\n  B --> C[NombreDestino]",
+  "mermaid_diagram": "graph LR\\n  A[NombreFuente] --> B[Transformacion]\\n  B --> C[NombreDestino]",
   "quality_checks": "Lista de validaciones, tests o checks de calidad definidos. Si no hay ninguno, escribí: Sin checks de calidad definidos.",
   "notes": "Observaciones técnicas relevantes: frecuencia de ejecución, dependencias externas, consideraciones de performance, etc."
 }}"""

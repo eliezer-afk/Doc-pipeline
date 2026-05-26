@@ -15,7 +15,7 @@ dependencies = [
 [project.scripts]
 docpipe = "docpipe.cli:app"
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
     "pytest>=8.0",
     "pytest-mock>=3.0",

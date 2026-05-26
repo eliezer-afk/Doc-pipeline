@@ -10,34 +10,50 @@ from google.genai import types
 from .config import Config
 from .parsers.base import PipelineInfo
 
-_PROMPT = """Sos un experto en ingeniería de datos. Generás documentación técnica clara y concisa en español para pipelines de datos.
-Tu output es SIEMPRE JSON válido con exactamente los campos especificados. No agregues texto fuera del JSON.
+_PROMPT = """Sos un experto en ingeniería de datos. Tu única tarea es analizar el código de un pipeline y devolver un JSON con su documentación.
 
-Analizá el siguiente pipeline de tipo '{type}' y generá documentación.
+REGLAS ESTRICTAS:
+- Respondé ÚNICAMENTE con el JSON. Sin texto antes, sin texto después, sin bloques markdown.
+- Todos los campos son OBLIGATORIOS. Nunca dejes un campo vacío o como null.
+- Si no tenés información suficiente para un campo, inferila del código o escribí "No especificado".
+- El campo "mermaid_diagram" SIEMPRE debe tener un diagrama válido basado en el flujo real del pipeline.
+- Los campos "sources" y "destination" SIEMPRE deben tener al menos un elemento.
 
-## Código fuente:
+TIPO DE PIPELINE: {type}
+
+CÓDIGO FUENTE:
 {source_code}
 
-## Metadatos extraídos:
+METADATOS EXTRAÍDOS:
 {metadata}
 
-## Output requerido — respondé SOLO con este JSON válido:
+FORMATO DE RESPUESTA (JSON puro, sin markdown):
 {{
-  "overview": "Descripción clara del pipeline en 2-4 oraciones",
-  "sources": [{{"name": "nombre_fuente", "type": "BigQuery|Postgres|API|CSV|otro", "description": "qué contiene"}}],
-  "transformations": "Descripción de las transformaciones aplicadas",
-  "destination": [{{"name": "nombre_destino", "type": "BigQuery|Postgres|archivo|otro", "description": "qué produce"}}],
-  "mermaid_diagram": "graph LR\\n  A[Fuente] --> B[Transform] --> C[Destino]",
-  "quality_checks": "Descripción de los checks de calidad y tests definidos",
-  "notes": "Observaciones adicionales relevantes"
+  "overview": "2 a 4 oraciones describiendo qué hace este pipeline, de dónde toma datos y qué produce",
+  "sources": [
+    {{"name": "nombre exacto de la fuente", "type": "BigQuery|Postgres|API|GCS|CSV|S3|otro", "description": "qué datos contiene esta fuente"}}
+  ],
+  "transformations": "Descripción detallada de cada transformación aplicada a los datos: limpieza, filtros, agregaciones, joins, cálculos, etc.",
+  "destination": [
+    {{"name": "nombre exacto del destino", "type": "BigQuery|Postgres|GCS|archivo|otro", "description": "qué datos escribe y en qué formato"}}
+  ],
+  "mermaid_diagram": "graph LR\\n  A[NombreFuente] --> B[Transformación]\\n  B --> C[NombreDestino]",
+  "quality_checks": "Lista de validaciones, tests o checks de calidad definidos. Si no hay ninguno, escribí: Sin checks de calidad definidos.",
+  "notes": "Observaciones técnicas relevantes: frecuencia de ejecución, dependencias externas, consideraciones de performance, etc."
 }}"""
 
-_RETRY_PROMPT = """El JSON que generaste no es válido. Corregilo y respondé SOLO con el JSON, sin texto adicional ni bloques de código markdown.
+_RETRY_PROMPT = """Tu respuesta anterior no era JSON válido. Debés corregirla.
 
-JSON inválido recibido:
+REGLAS:
+- Respondé ÚNICAMENTE con el JSON. Sin texto antes ni después, sin bloques de código markdown.
+- Todos los campos son obligatorios.
+
+JSON inválido que generaste:
 {bad_json}
 
-Error: {error}"""
+Error de parsing: {error}
+
+Corregí el JSON y respondé solo con el JSON válido:"""
 
 
 @dataclass

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+from google import genai
+from google.genai import types
 
 from .config import Config
 from .parsers.base import PipelineInfo
@@ -52,9 +52,16 @@ class GeneratedDoc:
 
 
 def generate(pipeline: PipelineInfo, config: Config) -> GeneratedDoc:
-    vertexai.init(project=config.vertex.project_id, location=config.vertex.region)
-    model = GenerativeModel(config.vertex.model)
-    gen_config = GenerationConfig(temperature=0.2, max_output_tokens=2048)
+    client = genai.Client(
+        vertexai=True,
+        project=config.vertex.project_id,
+        location=config.vertex.region,
+    )
+
+    gen_config = types.GenerateContentConfig(
+        temperature=0.2,
+        max_output_tokens=2048,
+    )
 
     prompt = _PROMPT.format(
         type=pipeline.type,
@@ -62,24 +69,53 @@ def generate(pipeline: PipelineInfo, config: Config) -> GeneratedDoc:
         metadata=json.dumps(pipeline.metadata, ensure_ascii=False, indent=2),
     )
 
-    response = model.generate_content(prompt, generation_config=gen_config)
+    response = client.models.generate_content(
+        model=config.vertex.model,
+        contents=prompt,
+        config=gen_config,
+    )
     raw = response.text.strip()
 
-    return _parse_response(raw, model, gen_config)
+    return _parse_response(raw, client, config, gen_config)
 
 
-def _parse_response(raw: str, model: GenerativeModel, gen_config: GenerationConfig) -> GeneratedDoc:
-    json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
-    text = json_match.group(1) if json_match else raw
-
+def _parse_response(
+    raw: str,
+    client: genai.Client,
+    config: Config,
+    gen_config: types.GenerateContentConfig,
+) -> GeneratedDoc:
+    text = _extract_json(raw)
     try:
-        data = json.loads(text)
-        return _dict_to_doc(data)
+        return _dict_to_doc(json.loads(text))
     except json.JSONDecodeError as e:
         retry_prompt = _RETRY_PROMPT.format(bad_json=text[:2000], error=str(e))
-        retry_response = model.generate_content(retry_prompt, generation_config=gen_config)
-        data = json.loads(retry_response.text.strip())
-        return _dict_to_doc(data)
+        retry_response = client.models.generate_content(
+            model=config.vertex.model,
+            contents=retry_prompt,
+            config=gen_config,
+        )
+        retry_text = _extract_json(retry_response.text.strip() if retry_response.text else "")
+        try:
+            return _dict_to_doc(json.loads(retry_text))
+        except json.JSONDecodeError:
+            return _dict_to_doc({})
+
+
+def _extract_json(raw: str) -> str:
+    """Extrae JSON de una respuesta que puede venir con markdown u otro texto."""
+    # 1. Bloque ```json ... ```
+    match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
+    if match:
+        return match.group(1)
+
+    # 2. Busca el primer { y el último } del texto
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return raw[start:end + 1]
+
+    return raw
 
 
 def _dict_to_doc(data: dict) -> GeneratedDoc:

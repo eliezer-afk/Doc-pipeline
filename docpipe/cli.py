@@ -13,7 +13,7 @@ from rich.syntax import Syntax
 from . import __version__
 from .config import load_config, save_config
 from .detector import detect_type
-from .generator import generate
+from .generator import generate as run_generate
 from .parsers import DbtParser, AirflowParser, PythonParser
 from .parsers.python_parser import PrefectParser
 from . import writer
@@ -29,7 +29,7 @@ app.add_typer(config_app, name="config")
 console = Console()
 
 
-@app.command()
+@app.command(name="generate")
 def generate_cmd(
     source: Path = typer.Argument(..., help="Archivo o carpeta del pipeline"),
     vault: Optional[str] = typer.Option(None, "--vault", help="Ruta raíz del vault Obsidian"),
@@ -66,7 +66,7 @@ def generate_cmd(
     pipeline_info = parser.parse(source)
 
     console.print("[dim]Generando documentación con Claude...[/dim]")
-    doc = generate(pipeline_info, config)
+    doc = run_generate(pipeline_info, config)
 
     content, target_path = writer.render(pipeline_info, doc, config, owner=owner, folder=folder)
 

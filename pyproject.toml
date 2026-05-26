@@ -6,7 +6,7 @@ requires-python = ">=3.10"
 
 dependencies = [
     "typer[all]>=0.12",
-    "anthropic[vertex]>=0.40",
+    "google-cloud-aiplatform>=1.60",
     "pyyaml>=6.0",
     "rich>=13.0",
     "jinja2>=3.1",

@@ -4,17 +4,16 @@ import json
 import re
 from dataclasses import dataclass, field
 
-import anthropic
+import vertexai
+from vertexai.generative_models import GenerativeModel, GenerationConfig
 
 from .config import Config
 from .parsers.base import PipelineInfo
 
-_SYSTEM_PROMPT = """Sos un experto en ingeniería de datos. Generás documentación técnica \
-clara, concisa y en {language} para pipelines de datos.
-Tu output es SIEMPRE JSON válido con exactamente los campos especificados. \
-No agregues texto fuera del JSON."""
+_PROMPT = """Sos un experto en ingeniería de datos. Generás documentación técnica clara y concisa en español para pipelines de datos.
+Tu output es SIEMPRE JSON válido con exactamente los campos especificados. No agregues texto fuera del JSON.
 
-_USER_PROMPT = """Analizá el siguiente pipeline de tipo '{type}' y generá documentación.
+Analizá el siguiente pipeline de tipo '{type}' y generá documentación.
 
 ## Código fuente:
 {source_code}
@@ -33,8 +32,7 @@ _USER_PROMPT = """Analizá el siguiente pipeline de tipo '{type}' y generá docu
   "notes": "Observaciones adicionales relevantes"
 }}"""
 
-_RETRY_PROMPT = """El JSON que generaste no es válido. Corregilo y respondé SOLO con el JSON, \
-sin texto adicional ni bloques de código markdown.
+_RETRY_PROMPT = """El JSON que generaste no es válido. Corregilo y respondé SOLO con el JSON, sin texto adicional ni bloques de código markdown.
 
 JSON inválido recibido:
 {bad_json}
@@ -54,31 +52,23 @@ class GeneratedDoc:
 
 
 def generate(pipeline: PipelineInfo, config: Config) -> GeneratedDoc:
-    client = anthropic.AnthropicVertex(
-        project_id=config.vertex.project_id,
-        region=config.vertex.region,
-    )
+    vertexai.init(project=config.vertex.project_id, location=config.vertex.region)
+    model = GenerativeModel(config.vertex.model)
+    gen_config = GenerationConfig(temperature=0.2, max_output_tokens=2048)
 
-    system = _SYSTEM_PROMPT.format(language=config.defaults.language)
-    user = _USER_PROMPT.format(
+    prompt = _PROMPT.format(
         type=pipeline.type,
-        source_code=pipeline.source_code[:12000],  # límite de contexto razonable
+        source_code=pipeline.source_code[:12000],
         metadata=json.dumps(pipeline.metadata, ensure_ascii=False, indent=2),
     )
 
-    response = client.messages.create(
-        model=config.vertex.model,
-        max_tokens=2048,
-        system=system,
-        messages=[{"role": "user", "content": user}],
-    )
+    response = model.generate_content(prompt, generation_config=gen_config)
+    raw = response.text.strip()
 
-    raw = response.content[0].text.strip()
-    return _parse_response(raw, client, config, system)
+    return _parse_response(raw, model, gen_config)
 
 
-def _parse_response(raw: str, client: anthropic.AnthropicVertex, config: Config, system: str) -> GeneratedDoc:
-    # Intenta extraer JSON aunque venga envuelto en ```json ... ```
+def _parse_response(raw: str, model: GenerativeModel, gen_config: GenerationConfig) -> GeneratedDoc:
     json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
     text = json_match.group(1) if json_match else raw
 
@@ -86,17 +76,9 @@ def _parse_response(raw: str, client: anthropic.AnthropicVertex, config: Config,
         data = json.loads(text)
         return _dict_to_doc(data)
     except json.JSONDecodeError as e:
-        # Reintento con prompt de corrección
-        retry_response = client.messages.create(
-            model=config.vertex.model,
-            max_tokens=2048,
-            system=system,
-            messages=[
-                {"role": "user", "content": _RETRY_PROMPT.format(bad_json=text[:2000], error=str(e))},
-            ],
-        )
-        retry_raw = retry_response.content[0].text.strip()
-        data = json.loads(retry_raw)
+        retry_prompt = _RETRY_PROMPT.format(bad_json=text[:2000], error=str(e))
+        retry_response = model.generate_content(retry_prompt, generation_config=gen_config)
+        data = json.loads(retry_response.text.strip())
         return _dict_to_doc(data)
 
 

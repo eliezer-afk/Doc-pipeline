@@ -1,0 +1,34 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: raw_data
+    tables:
+      - name: orders
+      - name: customers
+
+models:
+  - name: stg_orders
+    description: "Órdenes limpias desde la fuente raw"
+    columns:
+      - name: order_id
+        description: "ID único de la orden"
+        tests:
+          - unique
+          - not_null
+      - name: customer_id
+        description: "ID del cliente"
+      - name: total_amount
+        description: "Monto total de la orden"
+
+  - name: fct_ventas_mensuales
+    description: "Ventas agregadas por mes y cliente"
+    columns:
+      - name: month
+        description: "Mes de la venta (YYYY-MM)"
+        tests:
+          - not_null
+      - name: customer_id
+        description: "ID del cliente"
+      - name: total_revenue
+        description: "Ingresos totales del mes"

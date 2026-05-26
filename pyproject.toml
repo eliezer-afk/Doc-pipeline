@@ -1,0 +1,26 @@
+[project]
+name = "docpipe"
+version = "0.1.0"
+description = "Generador de documentación de pipelines para Obsidian"
+requires-python = ">=3.10"
+
+dependencies = [
+    "typer[all]>=0.12",
+    "anthropic[vertex]>=0.40",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "jinja2>=3.1",
+]
+
+[project.scripts]
+docpipe = "docpipe.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

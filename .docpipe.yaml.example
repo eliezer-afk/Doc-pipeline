@@ -1,0 +1,15 @@
+vault:
+  path: "C:/Users/tu-usuario/Obsidian/TuVault"
+  pipelines_folder: "Pipelines"
+
+vertex:
+  project_id: "tu-proyecto-gcp"
+  region: "us-east5"
+  model: "claude-sonnet-4-6"
+
+defaults:
+  owner: "tu-nombre"
+  tags:
+    - pipeline
+    - data
+  language: "es"
